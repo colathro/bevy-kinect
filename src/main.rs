@@ -267,11 +267,6 @@ fn center_of_close_blob(data: &[u16]) -> Vec2 {
         }
     }
 
-    // println!(
-    //     "left: {} right: {}, top: {}, bottom: {}",
-    //     left_most, right_most, top_most, bottom_most
-    // );
-
     Vec2::new(
         ((left_most + right_most) / 2).into(),
         ((top_most + bottom_most) / 2).into(),
@@ -291,8 +286,6 @@ fn keyboard_input(keys: Res<Input<KeyCode>>, kinect: NonSend<Kinect>) {
 }
 
 fn main() {
-    // Ok((data, _ /* timestamp */)) = dstream.receiver.try_recv()
-
     App::new()
         .add_startup_system(setup_kinect)
         .add_startup_system(spawn_depth)
