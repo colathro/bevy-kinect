@@ -1,4 +1,4 @@
-use array2d::Array2D;
+use array2d::{Array2D, Error};
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureFormat};
 use freenectrs::freenect::FreenectDepthStream;
@@ -82,7 +82,8 @@ fn spawn_depth(
     commands
         .spawn(NodeBundle {
             style: Style {
-                size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
                 justify_content: JustifyContent::SpaceBetween,
                 ..default()
             },
@@ -92,7 +93,8 @@ fn spawn_depth(
             parent
                 .spawn(NodeBundle {
                     style: Style {
-                        size: Size::new(Val::Percent(100.0), Val::Percent(100.0)),
+                        width: Val::Percent(100.0),
+                        height: Val::Percent(100.0),
                         position_type: PositionType::Absolute,
                         justify_content: JustifyContent::Center,
                         align_items: AlignItems::FlexStart,
@@ -104,10 +106,11 @@ fn spawn_depth(
                     // bevy logo (image)
                     parent.spawn(ImageBundle {
                         style: Style {
-                            size: Size::new(Val::Px(640.0), Val::Px(480.0)),
+                            width: Val::Px(640.0),
+                            height: Val::Px(480.0),
                             ..default()
                         },
-                        image: UiImage(image_handle),
+                        image: UiImage::new(image_handle),
                         ..default()
                     });
                 });
@@ -141,7 +144,7 @@ fn update_image_from_depth_data(
             if depth.depth_array.len() == 0 {
                 return;
             }
-            if let Some(mut handle) = images.get_mut(&depth.handle) {
+            if let Some(handle) = images.get_mut(&depth.handle) {
                 let mut new_pixels: Vec<u8> = vec![];
 
                 for measurement in depth.depth_array.iter() {
@@ -169,7 +172,7 @@ fn move_crosshair_to_pos(
         }
         let (camera, camera_transform) = q_camera.single();
 
-        let mut screen_pos = center_of_close_blob(depth.depth_array);
+        let mut screen_pos = center_of_close_blob(depth.depth_array).unwrap();
         screen_pos.y = (screen_pos.y - 480.0).abs();
         if screen_pos.x < 0.1 {
             return;
@@ -195,7 +198,7 @@ fn move_crosshair_to_pos(
     }
 }
 
-fn center_of_close_blob(data: &[u16]) -> Vec2 {
+fn center_of_close_blob(data: &[u16]) -> Result<Vec2, Error> {
     // assumes 640 x 480
 
     let mut break_outer = false;
@@ -205,9 +208,9 @@ fn center_of_close_blob(data: &[u16]) -> Vec2 {
     let mut top_most: u16 = 0;
     let mut bottom_most: u16 = 0;
 
-    let arr_2d = Array2D::from_iter_row_major(data.iter(), 480, 640);
+    let arr_2d = Array2D::from_iter_row_major(data.iter(), 480, 640)?;
     for i in 0..640 {
-        for k in arr_2d.column_iter(i) {
+        for k in arr_2d.column_iter(i)? {
             if k < &&400 {
                 break_outer = true;
                 left_most = i as u16;
@@ -221,9 +224,9 @@ fn center_of_close_blob(data: &[u16]) -> Vec2 {
 
     break_outer = false;
 
-    let arr_2d = Array2D::from_iter_row_major(data.iter(), 480, 640);
+    let arr_2d = Array2D::from_iter_row_major(data.iter(), 480, 640)?;
     for i in (0..640).rev() {
-        for k in arr_2d.column_iter(i) {
+        for k in arr_2d.column_iter(i)? {
             if k < &&400 {
                 break_outer = true;
                 right_most = i as u16;
@@ -237,9 +240,9 @@ fn center_of_close_blob(data: &[u16]) -> Vec2 {
 
     break_outer = false;
 
-    let arr_2d = Array2D::from_iter_row_major(data.iter(), 480, 640);
+    let arr_2d = Array2D::from_iter_row_major(data.iter(), 480, 640)?;
     for i in 0..480 {
-        for k in arr_2d.row_iter(i) {
+        for k in arr_2d.row_iter(i)? {
             if k < &&400 {
                 break_outer = true;
                 top_most = i as u16;
@@ -253,9 +256,9 @@ fn center_of_close_blob(data: &[u16]) -> Vec2 {
 
     break_outer = false;
 
-    let arr_2d = Array2D::from_iter_row_major(data.iter(), 480, 640);
+    let arr_2d = Array2D::from_iter_row_major(data.iter(), 480, 640)?;
     for i in (0..480).rev() {
-        for k in arr_2d.row_iter(i) {
+        for k in arr_2d.row_iter(i)? {
             if k < &&400 {
                 break_outer = true;
                 bottom_most = i as u16;
@@ -267,10 +270,10 @@ fn center_of_close_blob(data: &[u16]) -> Vec2 {
         }
     }
 
-    Vec2::new(
+    Ok(Vec2::new(
         ((left_most + right_most) / 2).into(),
         ((top_most + bottom_most) / 2).into(),
-    )
+    ))
 }
 
 fn keyboard_input(keys: Res<Input<KeyCode>>, kinect: NonSend<Kinect>) {
@@ -287,20 +290,22 @@ fn keyboard_input(keys: Res<Input<KeyCode>>, kinect: NonSend<Kinect>) {
 
 fn main() {
     App::new()
-        .add_startup_system(setup_kinect)
-        .add_startup_system(spawn_depth)
+        .add_systems(Startup, (setup_kinect, spawn_depth))
         .add_plugins(DefaultPlugins.set(WindowPlugin {
-            window: WindowDescriptor {
+            primary_window: Some(Window {
                 title: "Bevy Kinect".to_string(),
-                width: 640.,
-                height: 480.,
                 ..default()
-            },
+            }),
             ..default()
         }))
-        .add_system(read_depth_data)
-        .add_system(keyboard_input)
-        .add_system(update_image_from_depth_data)
-        .add_system(move_crosshair_to_pos)
+        .add_systems(
+            Update,
+            (
+                read_depth_data,
+                keyboard_input,
+                update_image_from_depth_data,
+                move_crosshair_to_pos,
+            ),
+        )
         .run();
 }
